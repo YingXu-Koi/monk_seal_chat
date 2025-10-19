@@ -29,7 +29,7 @@ import streamlit.components.v1 as components
 from st_supabase_connection import SupabaseConnection, execute_query
 import hashlib
 
-#@st.cache_resource
+@st.cache_resource
 def get_supabase_connection():
     """Safely create and reuse the Supabase connection."""
     return st.connection("supabase", type=SupabaseConnection)
