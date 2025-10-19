@@ -1,0 +1,30 @@
+# ==================== 核心框架 ====================
+langchain==0.2.11
+langchain-chroma==0.1.2
+langchain-community==0.2.10
+chromadb
+streamlit
+python-dotenv
+
+# ==================== Qwen 相关（新增）====================
+dashscope>=1.24.6
+numpy
+tqdm  # 向量化进度显示
+
+# ==================== 原有依赖 ====================
+pypdf
+tiktoken
+SpeechRecognition==3.10.0
+# pysqlite3-binary  # Windows/Conda 环境不需要，已从代码中移除
+gTTS
+pydub
+ffmpeg-python
+pocketsphinx
+st-supabase-connection==2.1.1
+supabase  # Supabase 客户端（用于测试）
+
+# ==================== 可选依赖（Day 3-4 需要）====================
+ddgs  # 免费互联网搜索（推荐，用于 Fact-Check 补充，原 duckduckgo-search 已改名）
+tavily-python      # 高质量搜索（可选，需 API Key）
+# cohere         # 重排序（可选）
+# langchain-openai  # OpenAI 降级（可选）
