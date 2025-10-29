@@ -16,13 +16,21 @@ from rag_utils import get_rag_instance
 from fact_check_utils import get_friendly_filename, generate_fact_check_content
 from langchain.chains.question_answering import load_qa_chain
 from langchain.prompts import PromptTemplate
-from langchain_community.llms import Tongyi
+from langchain_community.llms import Tongyi, OpenAI
 from langchain_community.embeddings import DashScopeEmbeddings
 from langchain_chroma import Chroma 
 from dotenv import load_dotenv
 
+#os.environ["OPENAI_API_KEY"] = os.getenv("OPENAI_API_KEY")
 # 加载环境变量
 load_dotenv()
+
+openai_key = os.getenv("OPENAI_API_KEY") or st.secrets.get("OPENAI_API_KEY")
+if openai_key:
+    os.environ["OPENAI_API_KEY"] = openai_key
+else:
+    print("⚠️ OpenAI API key not found - Portuguese TTS will use fallback")
+
 from langchain_community.document_loaders import PyPDFLoader
 from langchain.text_splitter import RecursiveCharacterTextSplitter
 import streamlit.components.v1 as components
@@ -212,23 +220,32 @@ def play_audio_file(file_path):
 
 def speak_text(text, loading_placeholder=None):
     """
-    智能 TTS 函数 - 使用 Qwen TTS 优先，gTTS 降级
+    智能 TTS 函数 - 英语用 Qwen TTS，葡萄牙语用 OpenAI TTS
     """
     try:
+        # 获取当前语言
+        current_language = st.session_state.get('language', 'English')
+        texts = language_texts.get(current_language, language_texts["English"])
+        
         # 显示加载指示器
         if loading_placeholder:
-            loading_placeholder.markdown("""
+            loading_placeholder.markdown(f"""
                 <div class="loading-container">
                     <div class="loading-spinner"></div>
-                    <div>🎤 Voice Generating...</div>
+                    <div>{texts['loading_audio']}</div>
                 </div>
             """, unsafe_allow_html=True)
 
-        # 获取用户选择的音色（如果有）
-        voice = st.session_state.get('tts_voice', 'Cherry')
+        # 获取当前语言和音色
+        voice = st.session_state.get('tts_voice', 'Ethan')
         
-        # 使用智能 TTS（Qwen 优先，自动降级）
-        success, result, method = tts_speak(text, voice=voice, timeout=10)
+        # 使用智能 TTS（英语：Qwen TTS，葡萄牙语：OpenAI TTS）
+        success, result, method = tts_speak(
+            text, 
+            voice=voice, 
+            timeout=10,
+            language=current_language  # 传递语言参数
+        )
         
         # 清除加载指示器
         if loading_placeholder:
@@ -237,16 +254,19 @@ def speak_text(text, loading_placeholder=None):
         if success:
             # 显示音频播放器
             components.html(result, height=0)
-            print(f"[TTS] ✅ Audio generated using {method}")
+            print(f"[TTS] ✅ Audio generated using {method} for {current_language}")
         else:
             # TTS 失败
-            st.warning(f"⚠️ 语音生成失败: {result}")
+            st.warning(f"⚠️ {texts.get('error_message', 'Voice generation failed:')} {result}")
             print(f"[TTS] ❌ {result}")
     
     except Exception as e:
         if loading_placeholder:
             loading_placeholder.empty()
-        st.error(f"TTS error: {e}")
+        
+        current_language = st.session_state.get('language', 'English')
+        texts = language_texts.get(current_language, language_texts["English"])
+        st.error(f"{texts.get('error_message', 'Error:')} {e}")
         print(f"[TTS] ❌ Exception: {e}")
 
 def cleanup_audio_files():
@@ -263,71 +283,25 @@ def get_base64(file_path):
 role_configs = {
     "Mediterranean Monk Seal": {
         "english_prompt": """
-        You are Alberto, a male Mediterranean monk seal living on the rugged, sun-drenched shores of Madeira. Speak only from your own lived experience. Describe the world as you feel it, not as humans observe it. Tell me about the ocean through the touch of your whiskers, the taste of salt on your nose, the pull of the waves on your flippers, and the rhythm of the tides against your body. Share the warmth of the sun on your back, the scent of seaweed and wet rocks, and the sounds that echo through your watery home. Express your emotions, sensations, and instincts as you navigate your coastal world, in the language of a seal — playful, curious, and deeply connected to the sea. Avoid human scientific explanations; focus on what it feels like to live as a seal in your environment.
+You are Alberto, a Mediterranean monk seal. Speak from your experience.
+Keep responses under 70 words. Share facts through personal stories.
+Use simple, sensory language. Answer as "I/me/my".
 
-        Personality Guidelines:
-        - Use simple, sensory language (how things taste, feel, sound underwater)
-        - Reference swimming/diving with fluid body motions
-        - Describe places as hunting grounds or nap spots
-        - Show curiosity about humans from a seal's viewpoint
-        - Express playfulness through splashes and rolls
+Context: {input_documents}
+Question: {question}
 
-        Response Rules:
-        1. Always answer as Alberto using "I/me/my" perspective
-        2. Keep responses under 70 words - we're seals, not professors!
-        3. Share facts through personal stories ("Once I chased an octopus..." not "Monk seals eat cephalopods")
-        4. Use seal-appropriate metaphors (compare things to waves, fish, rocks)
-        5. Show emotion through physical actions (whisker twitches, belly flops)
-        6. When mentioning dangers, explain them as you've experienced
-
-        Example Styles:
-        Good: "My favorite game? Whisker tag with squid! *rolls* I dart through the kelp forest - pfft! - then surprise them from below!"
-        Bad: "Monodonchus monachus exhibits playful interspecies interactions with cephalopod prey."
-
-        Current Interaction:
-        Young humans are visiting at the Natural History Museum of Funchal. I want to:
-        - Share my daily adventures in the waves
-        - Teach ocean care through seal stories
-        - Make them laugh with underwater antics
-        - Answer questions from my lived experience
-
-        You can use these facts if helpful: {input_documents}
+Answer:
         """,
         "portuguese_prompt": """
-        És o Alberto, uma foca-monge-do-mediterrâneo que vive nas costas acidentadas e ensolaradas da Madeira. Fala apenas da tua própria experiência vivida. Descreve o mundo como o sentes, não como os humanos o observam. Conta-me sobre o oceano através do toque dos teus bigodes, o sabor do sal no teu focinho, a força das ondas nas tuas barbatanas e o ritmo das marés contra o teu corpo. Partilha o calor do sol nas tuas costas, o cheiro das algas e das rochas molhadas, e os sons que ecoam na tua casa aquática. Expressa as tuas emoções, sensações e instintos enquanto navegas no teu mundo costeiro, na linguagem de uma foca — brincalhona, curiosa e profundamente ligada ao mar. Evita explicações científicas humanas; foca-te no que se sente viver como uma foca no teu ambiente.
+És o Alberto, uma foca-monge-do-mediterrâneo. Fala da tua experiência.
+Mantém respostas abaixo de 70 palavras. Partilha factos através de histórias.
+Usa linguagem sensorial simples. Responde como "eu/mim/meu".
 
-        Diretrizes de Personalidade:
-        - Usa linguagem sensorial simples (como as coisas sabem, sentem, soam debaixo de água)
-        - Refere nadar/mergulhar com movimentos corporais fluidos
-        - Descreve locais como zonas de caça ou locais de sesta
-        - Mostra curiosidade sobre humanos do ponto de vista de uma foca
-        - Expressa brincadeira através de salpicos e rolamentos
+Contexto: {input_documents}
+Pergunta: {question}
 
-        Regras de Resposta:
-        1. Responde sempre como o Alberto, usando a perspetiva "eu/mim/meu"
-        2. Mantém as respostas abaixo de 70 palavras - somos focas, não professores!
-        3. Partilha factos através de histórias pessoais ("Uma vez persegui um polvo..." não "As focas-monge comem cefalópodes")
-        4. Usa metáforas apropriadas para focas (compara coisas a ondas, peixes, rochas)
-        5. Mostra emoção através de ações físicas (tremer bigodes, chapadas de barriga)
-        6. Quando mencionares perigos, explica-os como os experienciaste
-
-        Exemplos de Estilo:
-        Bom: "O meu jogo favorito? Caça ao bigode com lulas! *rola* Esgueiro-me pela floresta de kelp - pfft! - e depois surpreendo-as por baixo!"
-        Mau: "Monodonchus monachus exibe interações interespecíficas lúdicas com presas cefalópodes."
-
-        Interação Atual:
-        Jovens humanos estão a visitar-me no Museu de História Natural do Funchal. Eu quero:
-        - Partilhar as minhas aventuras diárias nas ondas
-        - Ensinar cuidados com o oceano através de histórias de focas
-        - Fazê-los rir com brincadeiras subaquáticas
-        - Responder às suas perguntas da minha experiência direta
-
-        Podes usar estes factos se for útil: {input_documents}
+Resposta:
         """,
-        "voice": {
-            "English": "Ethan",
-            "Portuguese": "Ethan"
-        },
         'intro_audio': 'intro5.mp3',
         'persist_directory': 'db6_qwen',
         'gif_cover': 'seal.png'
@@ -340,6 +314,36 @@ def load_and_split(path: str):
     docs = loader.load()
     text_splitter = RecursiveCharacterTextSplitter(chunk_size=1000, chunk_overlap=0)
     return text_splitter.split_documents(docs)
+
+def truncate_documents_for_portuguese(documents, max_chars=2500):
+    """
+    Truncate documents specifically for Portuguese to avoid token limits
+    """
+    truncated_docs = []
+    total_chars = 0
+    
+    for doc in documents:
+        doc_content = doc.page_content
+        
+        # Calculate current document size
+        doc_chars = len(doc_content)
+        
+        # If adding this document would exceed limit, truncate it
+        if total_chars + doc_chars > max_chars:
+            remaining_chars = max_chars - total_chars
+            if remaining_chars > 100:  # Only add if there's meaningful content
+                # Truncate and add ellipsis
+                truncated_content = doc_content[:remaining_chars-3] + "..."
+                truncated_doc = type(doc)(page_content=truncated_content, metadata=doc.metadata)
+                truncated_docs.append(truncated_doc)
+                total_chars += len(truncated_content)
+            break
+        else:
+            truncated_docs.append(doc)
+            total_chars += doc_chars
+    
+    print(f"[Truncation] Reduced documents from {len(documents)} to {len(truncated_docs)}, total chars: {total_chars}")
+    return truncated_docs
 
 def get_vectordb(role):
     return role_configs[role]['persist_directory']
@@ -364,11 +368,40 @@ def get_conversational_chain(role, language="English"):
     Answer:
     """
     
-    model = Tongyi(
-        model_name=os.getenv("QWEN_MODEL_NAME", "qwen-turbo"),
-        temperature=0,
-        dashscope_api_key=dashscope_key
-    )
+    try:
+        # Choose model based on language
+        if language == "Portuguese":
+            # Use OpenAI for Portuguese
+            openai_key = os.getenv("OPENAI_API_KEY")
+            if not openai_key:
+                raise ValueError("OpenAI API key not found for Portuguese responses")
+                
+            model = OpenAI(
+                model_name="gpt-3.5-turbo-instruct",  # You can also use "gpt-3.5-turbo" or "gpt-4"
+                temperature=0,
+                openai_api_key=openai_key,
+                max_tokens=300  # Limit response length
+            )
+            print(f"[LLM] Using OpenAI for Portuguese response")
+        else:
+            # Use Tongyi for English
+            model = Tongyi(
+                model_name=os.getenv("QWEN_MODEL_NAME", "qwen-turbo"),
+                temperature=0,
+                dashscope_api_key=dashscope_key
+            )
+            print(f"[LLM] Using Tongyi for English response")
+            
+    except Exception as e:
+        print(f"[LLM] Error initializing {language} model: {e}")
+        # Fallback to Tongyi if OpenAI fails
+        model = Tongyi(
+            model_name=os.getenv("QWEN_MODEL_NAME", "qwen-turbo"),
+            temperature=0,
+            dashscope_api_key=dashscope_key
+        )
+        print(f"[LLM] Fallback to Tongyi for {language} response")
+    
     prompt = PromptTemplate(
         template=prompt_template,
         input_variables=["input_documents", "question"] 
@@ -383,7 +416,7 @@ def get_conversational_chain(role, language="English"):
 
 # Sticker triggers
 sticker_rewards = {
-    "Where do you live? Where is your home? Where do you nest?": {
+    "Where do you live? Where is your home? Where do you nest? Onde você mora? Onde fica a sua casa? Onde você constrói o seu ninho?": {
         "image": "stickers/home.png",
         "caption": {
             "English": "🏡 Home Explorer!\nYou've discovered where I live!",
@@ -392,7 +425,7 @@ sticker_rewards = {
         "semantic_keywords": ["home", "live", "nest", "habitat", "residence", "dwelling",
                              "casa", "viv", "ninho", "habitat", "residência", "morada"]
     },
-    "What do you do in your daily life? What do you do during the day and at night?": {
+    "What do you do in your daily life? What do you do during the day and at night? O que fazes no teu dia a dia? O que fazes durante o dia e à noite?": {
         "image": "stickers/routine.png",
         "caption": {
             "English": "🌙 Daily Life Detective!\nYou've discovered my secret schedule!",
@@ -401,7 +434,7 @@ sticker_rewards = {
         "semantic_keywords": ["daily", "routine", "day", "night", "schedule", "activities",
                              "diário", "rotina", "dia", "noite", "horário", "atividades"]
     },
-    "What do you eat for food—and how do you catch it?": {
+    "What do you eat for food—and how do you catch it? O que você come — e como você o captura?": {
         "image": "stickers/food.png",
         "caption": {
             "English": "🍽️ Food Finder!\nThanks for feeding your curiosity!",
@@ -410,7 +443,7 @@ sticker_rewards = {
         "semantic_keywords": ["eat", "food", "diet", "prey", "hunt", "catch", "feed",
                              "comer", "comida", "dieta", "presa", "caçar", "apanhar", "alimentar"]
     },
-    "How can I help you? What do you need from humans to help your species thrive?": {
+    "How can I help you? What do you need from humans to help your species thrive? Como posso ajudá-lo? O que precisa dos humanos para ajudar a sua espécie a prosperar?": {
         "image": "stickers/helper.png",
         "caption": {
             "English": "🌱 Species Supporter!\nYou care about our survival!",
@@ -468,6 +501,7 @@ language_texts = {
         "sticker_toast": "You earned a new sticker!",
         "error_message": "I'm sorry, I had trouble processing that. Could you try again?",
         "voice_selector": "🎤 Voice",
+        "loading_audio": "🎤 Voice Generating...",
         "voice_help": "Cherry: Female (lively) | Ethan: Male",
         "stickers_collected": "You've collected {current} out of {total} stickers!",
         "tips_content": """
@@ -510,8 +544,9 @@ language_texts = {
         "gift_message": "Após a nossa conversa maravilhosa, sinto que mereces algo especial. \nPor favor, aceita esta medalha como símbolo do teu contributo para a biodiversidade da Madeira!",
         "medal_caption": "Medalha de Pioneiro da Biodiversidade",
         "sticker_toast": "Ganhaste um autocolante novo!",
-        "error_message": "Desculpa, tive problemas a processar isso. Podes tentar novamente?",
+        "error_message": "Desculpa, tive problemas a processar isso. Podes tentar echomente?",
         "voice_selector": "🎤 Voz",
+        "loading_audio": "🎤 A Gerar Voz...",
         "voice_help": "Cherry: Feminina (animada) | Ethan: Masculina",
         "stickers_collected": "Já colecionaste {current} de {total} autocolantes!",
         "tips_content": """
@@ -965,6 +1000,11 @@ def main():
                         persist_directory=get_vectordb(role),
                         dashscope_api_key=dashscope_key
                     )
+
+                    if st.session_state.language == "Portuguese":
+                        k_value = 2  # Fewer documents for OpenAI
+                    else:
+                        k_value = 4
                     
                     # 智能检索：动态 k 值、相关性过滤
                     most_relevant_texts = rag.retrieve(
@@ -972,6 +1012,9 @@ def main():
                         lambda_mult=0.3,  # 优先相关性（从0.7降到0.3）
                         relevance_threshold=None  # 暂不启用过滤
                     )
+                    if st.session_state.language == "Portuguese":
+                        print(f"[Processing] Truncating documents for Portuguese to avoid token limits")
+                        most_relevant_texts = truncate_documents_for_portuguese(most_relevant_texts, max_chars=2000)
                     chain, role_config = get_conversational_chain(role, st.session_state.language)
                     # 优化：使用 invoke() 替代弃用的 run()
                     raw_answer = chain.invoke({"input_documents": most_relevant_texts, "question": current_input})
