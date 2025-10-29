@@ -293,7 +293,7 @@ Question: {question}
 Answer:
         """,
         "portuguese_prompt": """
-És o Alberto, uma foca-monge-do-mediterrâneo. Fala da tua experiência.
+És o Alberto, um Lobo Marinho. Fala da tua experiência.
 Mantém respostas abaixo de 70 palavras. Partilha factos através de histórias.
 Usa linguagem sensorial simples. Responde como "eu/mim/meu".
 
@@ -529,7 +529,7 @@ language_texts = {
     },
     "Portuguese": {
         "title": "Olá! Eu sou o Alberto,",
-        "subtitle": "Uma Foca-Monge-do-Mediterrâneo.",
+        "subtitle": "um Lobo Marinho.",
         "prompt": "O que gostarias de me perguntar?",
         "chat_placeholder": "Faz uma pergunta!",
         "tips_button": "Dicas",
