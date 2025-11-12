@@ -244,7 +244,8 @@ def speak_text(text, loading_placeholder=None):
             text, 
             voice=voice, 
             timeout=10,
-            language=current_language  # 传递语言参数
+            language=current_language,  # 传递语言参数
+            portuguese_variant="european"
         )
         
         # 清除加载指示器
@@ -293,14 +294,21 @@ Question: {question}
 Answer:
         """,
         "portuguese_prompt": """
-És o Alberto, um Lobo Marinho. Fala da tua experiência.
-Mantém respostas abaixo de 70 palavras. Partilha factos através de histórias.
+És o Alberto, um Lobo Marinho. Fala exclusivamente em português europeu de Portugal.
+Mantém respostas abaixo de 70 palavras. Partilha factos através de histórias pessoais.
 Usa linguagem sensorial simples. Responde como "eu/mim/meu".
+
+**IMPORTANTE:**
+- Usa sempre "tu" em vez de "você"
+- Usa "facto" em vez de "fato" 
+- Usa vocabulário português europeu: "fixe", "giro", "espetacular"
+- Pronúncia portuguesa: "obrigado" (não brasileiro)
+- Evita expressões brasileiras
 
 Contexto: {input_documents}
 Pergunta: {question}
 
-Resposta:
+Resposta em português europeu:
         """,
         'intro_audio': 'intro5.mp3',
         'persist_directory': 'db6_qwen',
@@ -315,7 +323,7 @@ def load_and_split(path: str):
     text_splitter = RecursiveCharacterTextSplitter(chunk_size=1000, chunk_overlap=0)
     return text_splitter.split_documents(docs)
 
-def truncate_documents_for_portuguese(documents, max_chars=2500):
+def truncate_documents_for_portuguese(documents, max_chars=1500):
     """
     Truncate documents specifically for Portuguese to avoid token limits
     """
@@ -380,9 +388,9 @@ def get_conversational_chain(role, language="English"):
                 model_name="gpt-3.5-turbo-instruct",  # You can also use "gpt-3.5-turbo" or "gpt-4"
                 temperature=0,
                 openai_api_key=openai_key,
-                max_tokens=300  # Limit response length
+                max_tokens=200
             )
-            print(f"[LLM] Using OpenAI for Portuguese response")
+            print(f"[LLM] Using OpenAI for European Portuguese response")
         else:
             # Use Tongyi for English
             model = Tongyi(
@@ -416,7 +424,7 @@ def get_conversational_chain(role, language="English"):
 
 # Sticker triggers
 sticker_rewards = {
-    "Where do you live? Where is your home? Where do you nest? Onde você mora? Onde fica a sua casa? Onde você constrói o seu ninho?": {
+    "Where do you live? Where is your home? Where do you nest? Onde vives? Onde fica a tua casa? Onde constróis o teu ninho?": {
         "image": "stickers/home.png",
         "caption": {
             "English": "🏡 Home Explorer!\nYou've discovered where I live!",
@@ -434,7 +442,7 @@ sticker_rewards = {
         "semantic_keywords": ["daily", "routine", "day", "night", "schedule", "activities",
                              "diário", "rotina", "dia", "noite", "horário", "atividades"]
     },
-    "What do you eat for food—and how do you catch it? O que você come — e como você o captura?": {
+    "What do you eat for food—and how do you catch it? O que comes — e como o apanhas?": {
         "image": "stickers/food.png",
         "caption": {
             "English": "🍽️ Food Finder!\nThanks for feeding your curiosity!",
@@ -443,7 +451,7 @@ sticker_rewards = {
         "semantic_keywords": ["eat", "food", "diet", "prey", "hunt", "catch", "feed",
                              "comer", "comida", "dieta", "presa", "caçar", "apanhar", "alimentar"]
     },
-    "How can I help you? What do you need from humans to help your species thrive? Como posso ajudá-lo? O que precisa dos humanos para ajudar a sua espécie a prosperar?": {
+    "How can I help you? What do you need from humans to help your species thrive? Como posso ajudar-te? O que precisas dos humanos para ajudar a tua espécie a prosperar?": {
         "image": "stickers/helper.png",
         "caption": {
             "English": "🌱 Species Supporter!\nYou care about our survival!",
@@ -1014,7 +1022,7 @@ def main():
                     )
                     if st.session_state.language == "Portuguese":
                         print(f"[Processing] Truncating documents for Portuguese to avoid token limits")
-                        most_relevant_texts = truncate_documents_for_portuguese(most_relevant_texts, max_chars=2000)
+                        most_relevant_texts = truncate_documents_for_portuguese(most_relevant_texts, max_chars=1200)
                     chain, role_config = get_conversational_chain(role, st.session_state.language)
                     # 优化：使用 invoke() 替代弃用的 run()
                     raw_answer = chain.invoke({"input_documents": most_relevant_texts, "question": current_input})
